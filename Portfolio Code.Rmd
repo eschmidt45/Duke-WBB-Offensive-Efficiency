@@ -4,11 +4,13 @@ author: "Emma Schmidt"
 date: "2023-02-02"
 output: pdf_document
 editor_options: 
-  chunk_output_type: inline
+chunk_output_type: inline
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+
+# Load necessary packages
 library(sf)
 library(readxl)
 library(tidyverse)
@@ -23,7 +25,17 @@ library(htmlwidgets)
 ```
 
 ```{r}
-court <- readRDS("/Users/emmaschmidt/Desktop/Duke/Duke Thesis/court.rds")
+# Load Data
+data <- read_excel("Duke WBB 22-23 Off Pos Data.xlsx") %>%
+  mutate(ct_zone = as.character(ct_zone))
+```
+
+
+```{r}
+# Construct court heatmap shape object
+
+# Save RDS file (uncomment and update path)
+# court <- readRDS("/Users/emmaschmidt/Desktop/Duke/Duke Thesis/court.rds")
 
 court <- court %>%
       mutate(Zone = c("court", "three", "low box", 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
@@ -351,12 +363,7 @@ plot(output)
 
 
 
-```{r}
-# Load Data
-data <- read_excel("Duke WBB 22-23 Off Pos Data.xlsx") %>%
-  mutate(
-    ct_zone = as.character(ct_zone))
-
+```{r, warning=False}
 # Data Pre-Processing
 data$qtr_id <- as.factor(data$qtr_id)
 data$ct_zone <- as.factor(data$ct_zone)
@@ -366,34 +373,29 @@ data$pos_id <- as.factor(data$pos_id)
 data = data %>%
   select(-notes, - `...24`) 
 
-
-
 model_cor <- data %>%
   select(passes, paint_tchs, hc_sides)
 
 mcor <- cor(model_cor)
 
-corrplot(mcor,method = 'number')
-
-data$notes
+corrplot(mcor, method = 'number')
 ```
 
 ```{r}
 # EDA
-
 paint_tch <- ggplot(data, aes(x = paint_tchs)) +
   geom_bar(fill = "blue", alpha = 0.5, color = "black") +
   xlab("Paint Touches") +
   ylab("Count") +
   theme_bw() +
-  theme(text=element_text(family="Times New Roman")) 
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) 
 
 shot_id <- ggplot(data, aes(x=shot_id)) +
   geom_bar(fill = "blue", alpha = 0.5, color = "black") +
   xlab("Shot Type") +
   ylab("Count") +
   theme_bw() +
-  theme(text=element_text(family="Times New Roman"))+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
   scale_x_discrete(labels=c("Dribbe", "Pass", "Putback"))
   
 
@@ -402,7 +404,7 @@ sides <- ggplot(data, aes(x=hc_sides)) +
   xlab("Side Changes") +
   ylab("Count") +
   theme_bw() +
-  theme(text=element_text(family="Times New Roman"))
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 
 passes <- ggplot(data, aes(x=passes)) +
@@ -410,22 +412,49 @@ passes <- ggplot(data, aes(x=passes)) +
   xlab("Passes") +
   ylab("Count") +
   theme_bw() +
-  theme(text=element_text(family="Times New Roman"))
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank())
 
 fig <- ggarrange(shot_id, passes, sides, paint_tch)
 
-annotate_figure(fig, top = text_grob("Possession Feature Breakdown", size = 15, family = "Times New Roman"))
-
-passes
+annotate_figure(fig, top = text_grob("Possession Feature Breakdown", size = 15))
 ```
 
+```{r}
+# Logistic Regression
+set.seed(45)
+test_id <- sample(1:nrow(data), size = .2*nrow(data))
+
+data_train <- data[-test_id,]
+data_test <- data[test_id,]
+
+# Train the model
+fit <- glm(fg_01 ~ shot_id  + paint_tchs + hc_sides + passes, 
+            data = data_train, family = "binomial")
+
+# In-sample predictions
+pi_hat <- predict(fit, type = "response")
+predictions <- 1*(pi_hat > 0.5)
+mean(predictions == data_train$fg_id)
+table(predictions, data_train$fg_id)
+
+
+# out-of-sample predictions
+pi_hat_test <- predict(fit, newdata = data_test, type = "response")
+test_predictions <- 1*(pi_hat_test > 0.5)
+mean(test_predictions == data_test$fg_id)
+
+
+summary(fit)
+```
 
 ```{r}
-x <- nrow(data %>%
-            filter(player_id == 0))
+# Average vs. Optimized Possession Heatmap
 
+# Total Possessions
+x <- nrow(data)
+
+# FG% by Zone
 zone_pct <- data %>%
-  filter(player_id == 0) %>%
   group_by(ct_zone) %>%
   summarize(zone_avg = round(100*mean(fg_01),2),
             zone_make = sum(fg_01),
@@ -446,75 +475,23 @@ shot_chart <- court %>%
                                       "Volume: ", round(100*volume,2), 
                                       sep = ""))
 
-test <- shot_chart %>%
-  mutate(zone_avg = as.character(zone_avg),
-         zone_make = as.character(zone_make),
-         zone_att = as.character(zone_att),
-         volume = as.character(volume))
-
-
 p1 <- ggplot(data = shot_chart) +
-  geom_sf(aes(fill = FG, text = paste("FG %: ", round(100*zone_avg,2), "%", "\n",
-                                      "Attempts: ", zone_make, "/", zone_att, "\n",
-                                      "Volume: ", round(100*volume,2, "%"),
-                                      sep = ""), color = zone_avg)) +
-  scale_fill_manual(values=c('Above 50%' = "#028000", '40-50%' = "#03BF00", '30-40%' ="#9AFF8C",
-                            '20-30%' = "#DEC1C1", '10-20%' = "#CC8D94", '0-10%' = "#7D1D2E")) +
-  scale_color_gradient(low="white", high="white") +
+   geom_sf(aes(fill = FG))+
+   scale_fill_manual(values=c('Above 50%' = "#7D1D2E", '40-50%' = "#CC8D94", '30-40%' ="#DEC1C1",
+                                   '20-30%' = "#A4B3DE", '10-20%' = "#6274B3", '0-10%' = "#01418F",
+                                   'No Shot Attempts' = "#E0E0E0"), na.value = "#E0E0E0") +
   facet_wrap(~"Average Possession") +
   theme(axis.text.x=element_blank(),
         axis.ticks.x=element_blank(),
         axis.text.y=element_blank(),  
-        axis.ticks.y=element_blank(),
-        plot.background = element_rect(fill = "#083c94")) +
-  guides(color = "none")
+        axis.ticks.y=element_blank())
 
-p1
-
-ggplotly(p1, tooltip = "text") %>% 
-  style(hoverlabel = list(bgcolor = "white"), hoveron = "fill", hoverinfo = "text")
-
-nrow(data %>%
-       filter(player_id == 0))
-
-
-heatmap <- ggplot(data = shot_chart) +
-        geom_sf(aes(fill = FG, text = text, color = zone_avg)) +
-        scale_fill_manual(values=c('Above 50%' = "#7D1D2E", '40-50%' = "#CC8D94", '30-40%' ="#DEC1C1",
-                                   '20-30%' = "#A4B3DE", '10-20%' = "#6274B3", '0-10%' = "#01418F",
-                                   'No Shot Attempts' = "#E0E0E0"), na.value = "#E0E0E0") +
-        #scale_color_gradient(low="black", high="black") +
-        labs(title = paste0("Field Goal Percentage: ")) +
-        theme(plot.title = element_text(hjust = .5, face = "bold", size = 16, family = "Helvetica Neue",
-                                        color = "white"),
-              axis.text.x=element_blank(),
-              axis.ticks.x=element_blank(),
-              axis.text.y=element_blank(),  
-              axis.ticks.y=element_blank(),
-              panel.grid.major = element_blank(),
-              panel.background = element_rect(fill = "#E0E0E0"),
-              plot.background = element_rect(fill = "#083c94", color = "#083c94"),
-              legend.background = element_rect(fill = "black"),
-              legend.title = element_text(color = "white"),
-              legend.text = element_text(color = "white"),
-              legend.box.background = element_rect(color = "white"),
-              legend.key = element_rect(color = "white")) +
-         guides(color = "none")        
-      
-      ggplotly(heatmap, tooltip = "text") %>% 
-        style(hoverlabel = list(bgcolor = "black"), hoveron = "fill", hoverinfo = "text")
-      
-
-
-```
-
-```{r}
 opt_data <- data %>%
   filter(shot_id == c("pass") | paint_tchs >= 1, hc_sides < mean(hc_sides))
 
 zone_pct2 <- opt_data %>%
   group_by(ct_zone) %>%
-  summarize(zone_avg = mean(fg_id))
+  summarize(zone_avg = mean(fg_01))
 
 shot_chart2 <- court %>% 
   left_join(zone_pct2, by = c("Zone" = "ct_zone")) %>%
@@ -528,8 +505,9 @@ shot_chart2 <- court %>%
 
 p2 <- ggplot(data = shot_chart2) +
    geom_sf(aes(fill = FG))+
-   scale_fill_manual(values=c('Above 50%' = "#028000", '40-50%' = "#03BF00", '30-40%' ="#9AFF8C",
-                            '20-30%' = "#DEC1C1", '10-20%' = "#CC8D94", '0-10%' = "#7D1D2E")) +
+   scale_fill_manual(values=c('Above 50%' = "#7D1D2E", '40-50%' = "#CC8D94", '30-40%' ="#DEC1C1",
+                                   '20-30%' = "#A4B3DE", '10-20%' = "#6274B3", '0-10%' = "#01418F",
+                                   'No Shot Attempts' = "#E0E0E0"), na.value = "#E0E0E0") +
   facet_wrap(~"Optimized Possession") +
   theme(axis.text.x=element_blank(),
         axis.ticks.x=element_blank(),
@@ -538,84 +516,11 @@ p2 <- ggplot(data = shot_chart2) +
 
 
 ggarrange(p1, p2, common.legend = T, legend = "right")
-
-
-
-p2
-
-p1
-
 ```
 
-
 ```{r}
-shy <- data %>%
-  filter(player_id == 2) 
-
-shy_z <- shy %>%
-  group_by(ct_zone) %>%
-  summarize(zone_avg = mean(fg_id))
-
-shy_chart <- court %>% 
-  left_join(shy_z, by = c("Zone" = "ct_zone")) %>%
-  filter(Zone != "court", Zone != "three", Zone != "low box") %>%
-  mutate(FG = case_when(zone_avg <= .10 ~ "0-10%",
-                           zone_avg > .10 & zone_avg <= .20 ~ "10-20%",
-                           zone_avg > .20 & zone_avg <= .30 ~ "20-30%",
-                           zone_avg > .30  & zone_avg <= .40 ~ "30-40%",
-                           zone_avg > .40  & zone_avg <= .50 ~ "40-50%",
-                           zone_avg > .50   ~ "Above 50%"))
-  
-  
-
-
-ggplot(data = shy_chart) +
-  geom_sf(aes(fill = FG)) +
-  scale_fill_manual(values=c('Above 50%' = "#7D1D2E", '40-50%' = "#CC8D94", '30-40%' ="#DEC1C1",
-                            '20-30%' = "#A4B3DE", '10-20%' = "#6274B3", '0-10%' = "#01418F",
-                            'No Shot Attempts' = "white"), na.value = "white") +
-  labs(title = "Average Possession") +
-  theme(plot.title = element_text(hjust = .5),
-        axis.text.x=element_blank(),
-        axis.ticks.x=element_blank(),
-        axis.text.y=element_blank(),  
-        axis.ticks.y=element_blank(),
-        panel.background = element_rect(fill = "burlywood"))
-
-```
-
-
-```{r}
-set.seed(45)
-test_id <- sample(1:nrow(data), size = .2*nrow(data))
-
-data_train <- data[-test_id,]
-data_test <- data[test_id,]
-
-# Train the model
-fit <- glm(fg_id ~ shot_id  + paint_tchs + hc_sides + passes, 
-            data = data_train, family = "binomial")
-
-# In-sample predictions
-pi_hat <- predict(fit, type = "response")
-predictions <- 1*(pi_hat > 0.5)
-mean(predictions == data_train$fg_id)
-table(predictions, data_train$fg_id)
-
-
-# out-of-sample predictions
-pi_hat_test <- predict(fit, newdata = data_test, type = "response")
-test_predictions <- 1*(pi_hat_test > 0.5)
-mean(test_predictions == data_test$fg_id)
-
-
-summary(fit)
-```
-
-
-```{r}
-#stargazer(fit2, single.row = T)
-fit2 <- glm(fg_id ~ shot_id  + paint_tchs + hc_sides*pos_type + passes, 
+# Logistic Regression with Feature Interaction
+fit2 <- glm(fg_01 ~ shot_id  + paint_tchs + hc_sides*pos_type + passes, 
             data = data_train, family = "binomial")
 
 # In-sample predictions
@@ -634,319 +539,34 @@ mean(test_predictions2 == data_test$fg_id)
 summary(fit2)
 ```
 
-
 ```{r}
-# Lasso!!!
+# Lasso
 library(glmnet)
 y <- data$fg_id
-X <- model.matrix(fg_id ~ ., data %>% dplyr::select(-player_id, -pos_id, -game_id))
+X <- model.matrix(data$fg_01 ~ ., data %>% dplyr::select(passes, pos_type, shot_id, paint_tchs, hc_sides))
 fit_lasso <- glmnet(y = y, x = X, family = "binomial")
 pred <- predict(fit_lasso, newx = X, type = "response")
+
 # Accuracy
 apply(pred, 2, function(x) mean(x > .5))
 
 # Out of sample
-#pred <- predict(fit_lasso, newx = X[test_id, ], type = "response")
-#apply(pred, 2, function(x) mean(x > .5))
+pred <- predict(fit_lasso, newx = X[test_id, ], type = "response")
+apply(pred, 2, function(x) mean(x > .5))
 ```
 
 ```{r}
 ## Random-forest
 library(ranger)
-fit_rf <- ranger(formula = as.factor(fg_id) ~ .,data =  data %>% dplyr::select(-player_id, -pos_id, -game_id), importance = "impurity")
-pred_rf <- predict(fit_rf, data %>% dplyr::select(-player_id, -pos_id, -game_id))
-mean(pred_rf$predictions == data$fg_id)
+fit_rf <- ranger(formula = as.factor(data$fg_01) ~ .,data =  data %>% dplyr::select(passes, pos_type, shot_id, paint_tchs, hc_sides), importance = "impurity")
+
+# Predictions
+pred_rf <- predict(fit_rf, data %>% dplyr::select(passes, pos_type, shot_id, paint_tchs, hc_sides))
+
+# Accuracy
+mean(pred_rf$predictions == data$fg_01)
+
+# Feature importance
 importance(fit_rf)
 
 ```
-
-
-
-```{r}
-data %>%
-  filter(player_id == 30, shot_id == "dribble")
-
-table(end$fg_id)
-```
-
-```{r}
-
-
-fg <- data %>% 
-  group_by(player_id) %>%
-  summarize(fg = mean(fg_id))
-
-fg3 <- data %>%
-  filter(ct_zone %in% c(1,8,18,19,20,14,7)) %>%
-  group_by(player_id) %>%
-  summarize(fg = mean(fg_id))
-
-shot_type <-  data %>%
-    group_by(player_id, shot_id) %>%
-    summarize(fg = mean(fg_id))
-  
-
-qtr <- data %>%
-  group_by(player_id, qtr_id) %>%
-  summarize(fg = mean(fg_id))
-
-
-pos <- data %>%
-  filter(pos_type %in% c("Half Court", "Transition")) %>%
-  group_by(player_id, pos_type) %>%
-  summarize(fg = mean(fg_id))
-
-qtr %>% pivot_wider(names_from = qtr_id, values_from = fg)
-
-table1 <- fg %>% left_join(fg3, by =c("player_id" = "player_id")) %>%
-  left_join(shot_type, by= c("player_id" = "player_id")) %>%
-  left_join(pos, by= c("player_id" = "player_id")) %>%
-  left_join(qtr, by= c("player_id" = "player_id")) %>%
-  pivot_wider(names_from = shot_id, values_from = fg.x.x) %>%
-  pivot_wider(names_from = pos_type, values_from = fg.y.y) %>%
-  pivot_wider(names_from = qtr_id, values_from = fg) %>%
-  rename('FG%' = fg.x, '3P FG%' = fg.y)
-
-table1
-
-```
-
-```{r}
-library(gtools)
-
-mixedrank = function(x) order(gtools::mixedorder(x))
-
-x <- data %>%
-    group_by(shot_id) %>%
-    summarize(fg = mean(fg_id)) %>%
-    pivot_wider(names_from = shot_id, values_from = fg)
-
-y <- data %>%
-  filter(pos_type %in% c("Half Court", "Transition")) %>%
-  group_by(pos_type) %>%
-  summarize(fg = mean(fg_id)) %>%
-  pivot_wider(names_from = pos_type, values_from = fg)
-
-z <- data %>%
-  group_by(qtr_id) %>%
-  summarize(fg = mean(fg_id)) %>%
-  pivot_wider(names_from = qtr_id, values_from = fg)
-
- table_team <- cbind(x, y, z)
- 
-table_team
-
-cbind(player_id = "Team", x)
-```
-
-
-```{r}
-game_total <- data %>%
-  group_by(game_nbr) %>%
-  summarise(n = n())
-
-game <- data %>%
-  filter(player_id == 0) %>%
-  group_by(game_nbr, opp_id, outcome, score) %>%
-  summarize(game_avg = round(100*mean(fg_01), 2),
-            game_make = sum(fg_01),
-            game_att = n()) %>%
-  left_join(game_total, by = c("game_nbr" = "game_nbr")) %>%
-  mutate(vol = 100*(game_att/n))
-
-
-trend <- ggplot(data = game, aes(x = game_nbr, y = game_avg, group = 1,
-                                 text = paste0(
-                                   "Opponent: ", opp_id, "\n",
-                                   "Outcome: ", outcome, "\n",
-                                   "Score: ", score, "\n",
-                                   "FG%: ", game_avg, "%", "\n",
-                                   "Attempts: ", game_make, "/", game_att, "\n",
-                                   sep = ""))) +
-  geom_line(color = "#0b3d91", lwd = 1.5) +
-  geom_hline(yintercept = 100*mean(data$fg_01), color = "red", show.legend = T) +
-  annotate("text", x=1.7, y=97, label="Team FG% Avg", color = "red", fill ="white") +
-  geom_point(color = "black") +
-  scale_x_continuous(breaks = round(seq(min(game$game_nbr), max(game$game_nbr), by = 1),1)) +
-  scale_y_continuous(limits = c(0, 100),
-                     sec.axis = sec_axis(~ .*1, name = "Percentage")) +
-  xlab("Game Number") +
-  ylab("Field Goal Percentage") +
-  labs(title = "Field Goal Efficiency Over Season") +
-  theme(panel.background = element_rect(fill = "#E0E0E0"),
-        plot.title = element_text(hjust = .5, face = "bold", size = 16, family = "Helvetica Neue",
-                                  color = "white"),
-        panel.grid = element_line(color= "black"),
-        plot.background = element_rect(fill = "#083c94", color = "#083c94"),
-        axis.text = element_text(color = "white"),
-        axis.ticks = element_line(color = "white"),
-        axis.title = element_text(color = "white"))
-
-ggplotly(trend, tooltip = "text") %>% 
-    style(hoverlabel = list(bgcolor = "black"), traces = 2, hoverinfo = "none")
-
-  
-```
-
-
-```{r}
-trend2 <- data %>%
-  filter(opp_id == "NC A&T")
-
-ggplot(data = trend2, aes(x = game_pos, y = trend_pct, group = 1)) +
-  geom_line(color = "#0b3d91", lwd = 1.5) +
-  xlab("Possession Number") +
-  ylab("Field Goal Percentage") +
-  labs(title = "Field Goal Efficiency Over Game") +
-  ylim(0,1) +
-  theme(panel.background = element_rect(fill = "#E0E0E0"),
-        plot.title = element_text(hjust = .5, face = "bold", size = 16, family = "Helvetica Neue",
-                                  color = "white"),
-        plot.background = element_rect(fill = "#083c94", color = "#083c94"),
-        axis.text = element_text(color = "white"),
-        axis.ticks = element_line(color = "white"),
-        axis.title = element_text(color = "white"))
-```
-
-```{r}
-fg2 <- data %>%
-  group_by(opp_code, game_id, player_id) %>%
-  summarize(fg = sprintf("%1.2f%%", 100*mean(fg_01))) %>%
-  replace(is.na(.), "-")
-
-fg32 <- data %>%
-  filter(ct_zone %in% c(1,8,18,19,20,14,7)) %>%
-  group_by(opp_code, game_id, player_id) %>%
-  summarize(fg = sprintf("%1.2f%%", 100*mean(fg_01))) %>%
-  replace(is.na(.), "-")
-
-shot_type2 <-  data %>%
-    filter(shot_id %in% c("dribble", "pass")) %>%
-    group_by(opp_code, game_id, shot_id, player_id) %>%
-    summarize(fg = sprintf("%1.2f%%", 100*mean(fg_01))) %>%
-  replace(is.na(.), "-")
-  
-
-qtr2 <- data %>%
-  group_by(opp_code, game_id, qtr_id, player_id) %>%
-  summarize(fg = sprintf("%1.2f%%", 100*mean(fg_01))) %>%
-  replace(is.na(.), "-")
-
-
-pos2 <- data %>%
-  filter(pos_type %in% c("hc", "trans")) %>%
-  group_by(opp_code, game_id, pos_type, player_id) %>%
-  summarize(fg = sprintf("%1.2f%%", 100*mean(fg_01))) %>%
-  replace(is.na(.), "-")
-
-
-table2 <- fg2 %>% left_join(fg32, by =c("opp_code" = "opp_code", "game_id" = "game_id",
-                                        "player_id" = "player_id")) %>%
-  left_join(shot_type2, by= c("opp_code" = "opp_code", "game_id" = "game_id",
-                                        "player_id" = "player_id")) %>%
-  left_join(pos2, by= c("opp_code" = "opp_code", "game_id" = "game_id",
-                                        "player_id" = "player_id")) %>%
-  left_join(qtr2, by= c("opp_code" = "opp_code", "game_id" = "game_id",
-                                        "player_id" = "player_id")) %>%
-  pivot_wider(names_from = shot_id, values_from = fg.x.x) %>%
-  pivot_wider(names_from = pos_type, values_from = fg.y.y) %>%
-  pivot_wider(names_from = qtr_id, values_from = fg) %>%
-  rename('FG%' = fg.x, '3P FG%' = fg.y)  
-
-fg2 %>% left_join(fg32, by =c("opp_code" = "opp_code", "game_id" = "game_id",
-                                        "player_id" = "player_id")) %>%
-  left_join(shot_type2, by= c("opp_code" = "opp_code", "game_id" = "game_id",
-                                        "player_id" = "player_id")) %>%
-  left_join(pos2, by= c("opp_code" = "opp_code", "game_id" = "game_id",
-                                        "player_id" = "player_id")) %>%
-  left_join(qtr2, by= c("opp_code" = "opp_code", "game_id" = "game_id",
-                                        "player_id" = "player_id")) %>%
-  pivot_wider(names_from = shot_id, values_from = fg.x.x)
-
-table2
-```
-
-```{r}
-data %>%
-  group_by(opp_code) %>%
-  summarise(pos = max(game_pos),
-            pt = sum(paint_tchs),
-            ptpos = pt/pos,
-            pass = sum(passes),
-            passpos = pass/pos,
-            sides = sum(hc_sides),
-            sidespos = sides/pos)
-
-t3 <- data %>%
-  summarize('Opponent' = "Season Averages",
-            'Makes' = round(sum(fg_01)/max(game_nbr), 2),
-            'Attempts' = round(max(pos_id)/max(game_nbr), 2),
-            'Paint Touches' = round(sum(paint_tchs)/max(game_nbr), 2),
-            'Paint Touches/Pos' = round(sum(paint_tchs)/max(pos_id), 2),
-            'Passes' = round(sum(passes)/max(game_nbr), 2),
-            'Passes/Pos' = round(sum(passes)/max(pos_id), 2),
-            'Sides' = round(sum(hc_sides)/max(game_nbr), 2),
-            'Sides/Pos' = round(sum(hc_sides)/max(pos_id), 2))
-
-t3_2 <- data %>%
-  group_by(opp_code) %>%
-  summarize('Makes' = sum(fg_01),
-            'Attempts' = max(game_pos),
-            'Paint Touches' = sum(paint_tchs),
-            'Paint Touches/Pos' = round(sum(paint_tchs)/max(game_pos), 2),
-            'Passes' = sum(passes),
-            'Passes/Pos' = round(sum(passes)/max(game_pos), 2),
-            'Sides' = sum(hc_sides),
-            'Sides/Pos' = round(sum(hc_sides)/max(game_pos), 2)) %>%
-  rename('Opponent' = opp_code)
-
-t3_2
-
-t3_f <- rbind(t3, t3_2)
-
-data %>%
-  group_by(opp_code) %>%
-  summarize('Makes' = sum(fg_01),
-            'Attempts' = max(game_pos),
-            'Paint Touches' = sum(paint_tchs),
-            'Paint Touches/Pos' = round(sum(paint_tchs)/max(game_pos), 2),
-            'Passes' = sum(passes),
-            'Passes/Pos' = round(sum(passes)/max(game_pos), 2),
-            'Sides' = sum(hc_sides),
-            'Sides/Pos' = round(sum(hc_sides)/max(game_pos), 2)) 
-```
-
-
-```{r}
-data %>%
-  select(-notes, - `...24`) %>%
-  filter(fg_id != "ft") %>%
-  mutate(player_id = case_when(player_id == 0 ~ "#0 Celeste Taylor",
-                               player_id == 2 ~ "#2 Vanessa de Jesus",
-                               player_id == 3 ~ "#3 Ashlon Jackson",
-                               player_id == 4 ~ "#4 Elizabeth Balogun",
-                               player_id == 5 ~ "#5 Taya Corosdale",
-                               player_id == 11 ~ "#11 Jordyn Oliver",
-                               player_id == 13 ~ "#13 Lee Volker",
-                               player_id == 21 ~ "#21 Kennedy Brown",
-                               player_id == 24 ~ "#24 Reigan Richardson",
-                               player_id == 30 ~ "#30 Shy Day-Wilson",
-                               player_id == 42 ~ "#42 Mia Heide",
-                               TRUE ~ "test"),
-         qtr_id = case_when(qtr_id == 1 ~ "1st Quarter",
-                            qtr_id == 2 ~ "2nd Quarter",
-                            qtr_id == 3 ~ "3rd Quarter",
-                            qtr_id == 4 ~ "4th Quarter"),
-         pos_type = case_when(pos_type == "hc" ~ "Half Court",
-                              pos_type == "trans" ~ "Transition",
-                              TRUE ~ pos_type),
-         shot_id = case_when(shot_id == "dribble" ~ "Off the Dribble",
-                             shot_id == "pass" ~ "Catch and Shoot",
-                             TRUE ~ shot_id),
-         game_id = case_when(game_id == "non-con" ~ "Non-Con",
-                             game_id == "acc" ~ "ACC",
-                             TRUE ~ game_id)) %>%
-  rename(Player = player_id) %>%
-  drop_na()
-```
-
