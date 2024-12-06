@@ -29,4 +29,4 @@ Step 2: Fork the repository OR download the 'Portfolio Code'.Rmd and 'Duke WBB 2
 Step 3: Run the 'Portfolio Code'.Rmd
 
 ## Note for the User
-The data has been updated since the conclusion of the thesis. The best model and predictions results may vary from the original conclusions.
+The data has been updated since the conclusion of the thesis. The best model and prediction results may vary from the original conclusions.
