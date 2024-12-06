@@ -20,3 +20,13 @@ In order to proceed with this study, all of the data was hand collected from gam
 - whether or not the field goal attempt was a make or miss
 
 Using this data, I begin my investigation of offensive efficiency, first executing feature selection and then proceeding with model construction. Finally, I assess my model results, highlight key possession features, and offer offensive strategy modifications that look to improve overall field goal efficiency.
+
+## Deployment
+Step 1: For best user experience run using RStudio. Download here: [RStudio](https://posit.co/download/rstudio-desktop/)
+
+Step 2: Fork the repository OR download the 'Portfolio Code'.Rmd and 'Duke WBB 22-23 Off Pos Data'.xlsx files from the repository
+
+Step 3: Run the 'Portfolio Code'.Rmd
+
+## Note for the User
+The data has been updated since the conclusion of the thesis. The best model and predictions results may vary from the original conclusions.
