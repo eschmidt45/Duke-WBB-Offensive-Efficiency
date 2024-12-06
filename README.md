@@ -24,7 +24,7 @@ Using this data, I begin my investigation of offensive efficiency, first executi
 ## Deployment
 Step 1: For best user experience run using RStudio. Download here: [RStudio](https://posit.co/download/rstudio-desktop/)
 
-Step 2: Fork the repository OR download the 'Portfolio Code'.Rmd and 'Duke WBB 22-23 Off Pos Data'.xlsx files from the repository
+Step 2: Download and save into a folder the 'Portfolio Code'.Rmd and 'Duke WBB 22-23 Off Pos Data'.xlsx files from the repository
 
 Step 3: Run the 'Portfolio Code'.Rmd
 
